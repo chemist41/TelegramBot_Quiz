@@ -27,7 +27,7 @@ DB_NAME = 'quiz_bot.db'
 
 
 # Хэндлер на команду /start
-# @dp.message(Command("hello"))
+@dp.message(Command("hello"))
 async def cmd_start(message: types.Message):
     await message.answer("Привет! Я твой новый бот.")
 
@@ -49,12 +49,16 @@ async def cmd_quiz(message: types.Message):
     # Запускаем новый квиз
     await new_quiz(message)
 
+
 async def new_quiz(message):
     # получаем id пользователя, отправившего сообщение
     user_id = message.from_user.id
     # сбрасываем значение текущего индекса вопроса квиза в 0
     current_question_index = 0
+    nwe_count = 0
+
     await update_quiz_index(user_id, current_question_index)
+    await update_quiz_count(user_id, nwe_count)
 
     # запрашиваем новый вопрос для квиза
     await get_question(message, user_id)
@@ -76,7 +80,6 @@ async def get_question(message, user_id):
 
 
 def generate_options_keyboard(answer_options, right_answer):
-
   # Создаем сборщика клавиатур типа Inline
     builder = InlineKeyboardBuilder()
 
@@ -95,8 +98,6 @@ def generate_options_keyboard(answer_options, right_answer):
     builder.adjust(1)
     return builder.as_markup()
 
-
-count = 0
 @dp.callback_query(F.data == "right_answer")
 async def right_answer(callback: types.CallbackQuery):
 
@@ -105,17 +106,17 @@ async def right_answer(callback: types.CallbackQuery):
         message_id=callback.message.message_id,
         reply_markup=None
     )
+    await callback.message.answer(f"Ваш ответ: Верный!")
 
-    await callback.message.answer("Верно!")
     current_question_index = await get_quiz_index(callback.from_user.id)
+    count = await get_quiz_count(callback.from_user.id)
 
     # Обновление номера текущего вопроса в базе данных
     current_question_index += 1
-    global count
     count += 1
 
     await update_quiz_index(callback.from_user.id, current_question_index)
-
+    await update_quiz_count(callback.from_user.id, count)
 
     if current_question_index < len(quiz_data):
         await get_question(callback.message, callback.from_user.id)
@@ -134,20 +135,28 @@ async def wrong_answer(callback: types.CallbackQuery):
 
     # Получение текущего вопроса из словаря состояний пользователя
     current_question_index = await get_quiz_index(callback.from_user.id)
+    num_count = await get_quiz_count(callback.from_user.id)
+
     correct_option = quiz_data[current_question_index]['correct_option']
 
-    await callback.message.answer(f"Неправильно. Правильный ответ: {quiz_data[current_question_index]['options'][correct_option]}")
+    await callback.message.answer(f"Ваш ответ: Неверный. "
+                                  f"Правильный ответ: {quiz_data[current_question_index]['options'][correct_option]}")
 
     # Обновление номера текущего вопроса в базе данных
     current_question_index += 1
-    await update_quiz_index(callback.from_user.id, current_question_index)
 
+    await update_quiz_index(callback.from_user.id, current_question_index)
+    await update_quiz_count(callback.from_user.id, num_count)
 
     if current_question_index < len(quiz_data):
         await get_question(callback.message, callback.from_user.id)
     else:
         await callback.message.answer(f"Это был последний вопрос. Квиз завершен!\n"
-                                      f"Правильных ответов {count} из 12")
+                                      f"Правильных ответов {num_count} из 12")
+
+@dp.message()
+async def echo_message(msg: types.Message):
+    await bot.send_message(msg.from_user.id, msg.text)
 
 # Запуск процесса поллинга новых апдейтов
 async def main():
